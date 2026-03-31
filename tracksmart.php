@@ -1,9 +1,5 @@
-    // PrestaShop 9.x uses displayHeader instead of header
-    public function hookDisplayHeader()
-    {
-        return $this->hookHeader();
-    }
-<?php
+
+    <?php
 
 if (!defined('_PS_VERSION_'))
 {
@@ -60,6 +56,12 @@ class TrackSmart extends Module
         $this->ps_versions_compliancy = array('min' => '1.7', 'max' => '9.9');
     }
 
+    // PrestaShop 9.x uses displayHeader instead of header
+    public function hookDisplayHeader($params = [])
+    {
+        return $this->hookHeader($params);
+    }
+
     public function install()
     {
         foreach ($this->configuration_fields as $key => $value)
@@ -73,7 +75,7 @@ class TrackSmart extends Module
 
         return parent::install() &&
             $this->registerHook('actionFrontControllerSetMedia') &&
-            $this->registerHook('header');
+            $this->registerHook('displayHeader');
     }
 
     public function uninstall()
@@ -307,7 +309,8 @@ class TrackSmart extends Module
             'tracksmart_container' => Configuration::get('TRACKSMART_ID'),
             'tracksmart_user' => $this->context->customer->id ?? null,
             'tracksmart_event' => $event['name'] ?? null,
-            'tracksmart_data' => Tools::jsonDecode(Tools::jsonEncode($event['data'] ?? "{}"))
+            // Use native PHP functions for JSON encode/decode (PHP 8.4 compatible)
+            'tracksmart_data' => json_decode(json_encode($event['data'] ?? (object)[], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), true)
         );
 
         Media::addJsDef(array('tracksmart_frontcontroller' =>
