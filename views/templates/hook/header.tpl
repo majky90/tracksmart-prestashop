@@ -10,7 +10,7 @@
 
         {if isset($tracksmart_event)}
             {if isset($tracksmart_data)}
-                trackSmart.process('{$tracksmart_event}', {$tracksmart_data|@json_encode nofilter});
+                trackSmart.process('{$tracksmart_event}', {$tracksmart_data|@json_encode|replace:'\u':'\\u' nofilter});
             {else}
                 trackSmart.process('{$tracksmart_event}');
             {/if}

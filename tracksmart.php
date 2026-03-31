@@ -1,3 +1,8 @@
+    // PrestaShop 9.x uses displayHeader instead of header
+    public function hookDisplayHeader()
+    {
+        return $this->hookHeader();
+    }
 <?php
 
 if (!defined('_PS_VERSION_'))
@@ -41,7 +46,7 @@ class TrackSmart extends Module
         $this->name = 'tracksmart';
         $this->tab = 'analytics_stats';
         $this->module_key = 'dc5b9ea5c7aeb8266461cf40270cc604';
-        $this->version = '1.0.0';
+        $this->version = '1.1';
         $this->author = 'Kacper Duras';
         $this->need_instance = 1;
 
@@ -52,7 +57,7 @@ class TrackSmart extends Module
         $this->displayName = $this->l('TrackSmart');
         $this->description = $this->l('Module to enhanced tracking for Google Analytics 4 (via Google Tag Manager)');
 
-        $this->ps_versions_compliancy = array('min' => '1.7', 'max' => _PS_VERSION_);
+        $this->ps_versions_compliancy = array('min' => '1.7', 'max' => '9.9');
     }
 
     public function install()
@@ -91,9 +96,9 @@ class TrackSmart extends Module
             $state = Tools::getValue('TRACKSMART_STATE');
             $container = Tools::getValue('TRACKSMART_ID');
 
-            if ($state && ($container == null || empty($container) || !substr($container, 0, 4 ) == "GTM-"))
+            if ($state && ($container == null || empty($container) || strncmp($container, "GTM-", 4) !== 0))
             {
-                $output .= $this->displayError('Please, provide valid format of container ID');
+                $output .= $this->displayError('Please, provide valid format of container ID (GTM-XXXXXX)');
             }
             else
             {
@@ -101,7 +106,6 @@ class TrackSmart extends Module
                 {
                     Configuration::updateValue($key, Tools::getValue($key));
                 }
-
                 $output .= $this->displayConfirmation('Settings updated');
             }
         }
