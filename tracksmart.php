@@ -189,94 +189,159 @@ class TrackSmart extends Module
         }
 
         $event = array('data' => array());
+
         if ($controller === 'cart')
         {
+            // BEGIN_CHECKOUT event with prices including tax
             $event['name'] = 'begin_checkout';
             $event['data']['currency'] = $this->context->currency->iso_code;
+            $event['data']['value'] = (double) $this->context->cart->getOrderTotal(true);
 
             $products = array();
 
             foreach ($this->context->cart->getProducts() as $product)
             {
                 $category = new Category($product['id_category_default'], $this->context->language->id);
-
-                array_push($products, array(
+                
+                $item = array(
                     'item_name' => Tools::replaceAccentedChars($product['name']),
-                    'item_id' => $product['id_product'],
-                    'price' => ((double) $product['price']),
-                    'item_brand' => $product['manufacturer_name'] ?? null,
+                    'item_id' => (string) $product['id_product'],
+                    'price' => (double) $product['price_wt'],
+                    'item_brand' => $product['manufacturer_name'],
                     'item_category' => $category->name,
-                    'item_variant' => $product['attributes_small'] ?? null,
-                    'quantity' => $product['quantity']
-                ));
+                    'quantity' => (int) $product['quantity']
+                );
+
+                // Add item_variant only if it exists
+                if (!empty($product['attributes_small']))
+                {
+                    $item['item_variant'] = $product['attributes_small'];
+                }
+
+                $products[] = $item;
             }
 
             $event['data']['items'] = $products;
         }
         elseif ($controller === 'order-confirmation')
         {
-            $id_order = Tools::getValue('id_order');
-            if ($id_order != null)
+            // PURCHASE event with prices including tax from Order object
+            $id_order = (int) Tools::getValue('id_order');
+            if ($id_order > 0)
             {
-                $cart = new Cart(Order::getCartIdStatic($id_order, $this->context->customer->id));
+                $order = new Order($id_order);
 
                 $event['name'] = 'purchase';
                 $event['data']['currency'] = $this->context->currency->iso_code;
+                $event['data']['transaction_id'] = $order->reference;
+                $event['data']['affiliation'] = Configuration::get('PS_SHOP_NAME');
+                $event['data']['value'] = (double) $order->total_paid_tax_incl;
+
+                // Calculate tax from order totals
+                $tax_amount = (double)$order->total_paid_tax_incl - (double)$order->total_paid_tax_excl;
+                $event['data']['tax'] = ($tax_amount > 0) ? (double)$tax_amount : 0.0;
+                
+                // Get shipping cost with tax included
+                $event['data']['shipping'] = (double) $order->total_shipping_tax_incl;
 
                 $products = array();
 
-                foreach ($cart->getProducts() as $product)
+                foreach ($order->getProducts() as $product)
                 {
                     $category = new Category($product['id_category_default'], $this->context->language->id);
 
-                    array_push($products, array(
-                        'item_name' => Tools::replaceAccentedChars($product['name']),
-                        'item_id' => $product['id_product'],
-                        'price' => ((double) $product['price']),
-                        'item_brand' => $product['manufacturer_name'] ?? null,
+                    // Get manufacturer name from product
+                    $manufacturer_name = '';
+                    if (!empty($product['product_manufacturer']))
+                    {
+                        $manufacturer_name = $product['product_manufacturer'];
+                    }
+                    elseif ($product['product_id'] > 0)
+                    {
+                        $prod_obj = new Product((int) $product['product_id']);
+                        if ($prod_obj->id_manufacturer > 0)
+                        {
+                            $manufacturer = new Manufacturer($prod_obj->id_manufacturer);
+                            $manufacturer_name = $manufacturer->name ?? '';
+                        }
+                    }
+
+                    $item = array(
+                        'item_name' => Tools::replaceAccentedChars($product['product_name']),
+                        'item_id' => (string) $product['product_id'],
+                        'price' => (double) $product['unit_price_tax_incl'],
                         'item_category' => $category->name,
-                        'item_variant' => $product['attributes_small'] ?? null,
-                        'quantity' => $product['quantity']
-                    ));
+                        'quantity' => (int) $product['product_quantity']
+                    );
+
+                    // Add item_brand only if not empty
+                    if (!empty($manufacturer_name))
+                    {
+                        $item['item_brand'] = $manufacturer_name;
+                    }
+
+                    // Add item_variant only if it exists
+                    if (!empty($product['product_attribute_text']))
+                    {
+                        $item['item_variant'] = $product['product_attribute_text'];
+                    }
+
+                    $products[] = $item;
                 }
 
+                // Add coupon if available
                 $coupons = array();
-                foreach ($cart->getCartRules() as $target)
+                $cart_rules = $order->getCartRules();
+                if (is_array($cart_rules) && count($cart_rules) > 0)
                 {
-                    $coupons[] = $target['name'];
+                    foreach ($cart_rules as $rule)
+                    {
+                        $coupons[] = $rule['name'];
+                    }
+                    if (count($coupons) > 0)
+                    {
+                        $event['data']['coupon'] = implode(' | ', $coupons);
+                    }
                 }
 
-                $event['data']['transaction_id'] = $id_order;
-                $event['data']['affiliation'] = Configuration::get('PS_SHOP_NAME');
-                $event['data']['currency'] = $this->context->currency->iso_code;
-                $event['data']['value'] = ((double) $cart->getOrderTotal(false, Cart::BOTH_WITHOUT_SHIPPING));
-                $event['data']['tax'] = (((double) $cart->getOrderTotal(true)) - ((double) $cart->getOrderTotal(false)));
-                $event['data']['shipping'] = ((double) $cart->getOrderTotal(false, Cart::ONLY_SHIPPING));
-                $event['data']['coupon'] = implode(' | ', $coupons);
                 $event['data']['items'] = $products;
             }
         }
         elseif ($controller === 'product')
         {
+            // VIEW_ITEM event with price including tax
             $product = $this->context->controller->getTemplateVarProduct();
             $category = new Category($product['id_category_default'], $this->context->language->id);
 
+            // Get price with tax included
+            $price_tax_incl = (double) Product::getPriceStatic((int) $product['id_product'], true, null, 6);
+
             $event['name'] = 'view_item';
             $event['data']['currency'] = $this->context->currency->iso_code;
-            $event['data']['items'] = array(array(
+            $event['data']['value'] = $price_tax_incl;
+
+            $item = array(
                 'item_name' => Tools::replaceAccentedChars($product['name']),
-                'item_id' => $product['id_product'],
-                'price' => ((double) $product['price_amount']),
-                'item_brand' => $product['manufacturer_name'] ?? null,
+                'item_id' => (string) $product['id_product'],
+                'price' => $price_tax_incl,
+                'item_brand' => $product['manufacturer_name'],
                 'item_category' => $category->name,
-                'item_variant' => $product['attributes_small'] ?? null,
-                'quantity' => $product['minimal_quantity']
-            ));
+                'quantity' => (int) $product['minimal_quantity']
+            );
+
+            // Add item_variant only if it exists
+            if (!empty($product['attributes_small']))
+            {
+                $item['item_variant'] = $product['attributes_small'];
+            }
+
+            $event['data']['items'] = array($item);
         }
-        else if ($controller == 'category')
+        elseif ($controller === 'category')
         {
-            $page = Tools::getIsset('page') ? Tools::getValue('page') : 1;
-            $limit = Configuration::get('PS_PRODUCTS_PER_PAGE') ?? 12;
+            // VIEW_ITEM_LIST event with index and fixed quantity = 1
+            $page = (int) (Tools::getIsset('page') ? Tools::getValue('page') : 1);
+            $limit = (int) (Configuration::get('PS_PRODUCTS_PER_PAGE') ?? 12);
             $products = $this->context->controller->getCategory()
                 ->getProducts($this->context->language->id, $page, $limit);
 
@@ -284,21 +349,33 @@ class TrackSmart extends Module
             $event['data']['currency'] = $this->context->currency->iso_code;
             $result = array();
 
-            if ($products > 0)
+            if (is_array($products) && count($products) > 0)
             {
+                $index = 0;
                 foreach ($products as $product)
                 {
+                    // Get price with tax included
+                    $price_tax_incl = (double) Product::getPriceStatic((int) $product['id_product'], true, null, 6);
                     $category = new Category($product['id_category_default'], $this->context->language->id);
 
-                    array_push($result, array(
+                    $item = array(
                         'item_name' => Tools::replaceAccentedChars($product['name']),
-                        'item_id' => $product['id_product'],
-                        'price' => ((double) $product['price']),
-                        'item_brand' => $product['manufacturer_name'] ?? null,
+                        'item_id' => (string) $product['id_product'],
+                        'price' => $price_tax_incl,
+                        'item_brand' => $product['manufacturer_name'],
                         'item_category' => $category->name,
-                        'item_variant' => $product['attributes_small'] ?? null,
-                        'quantity' => $product['quantity']
-                    ));
+                        'index' => (int) $index,
+                        'quantity' => 1
+                    );
+
+                    // Add item_variant only if it exists
+                    if (!empty($product['attributes_small']))
+                    {
+                        $item['item_variant'] = $product['attributes_small'];
+                    }
+
+                    $result[] = $item;
+                    $index++;
                 }
             }
 

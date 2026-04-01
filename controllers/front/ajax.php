@@ -60,15 +60,44 @@ class TrackSmartAjaxModuleFrontController extends ModuleFrontController
             }
         }
         $category = new Category($product['id_category_default'], $this->context->language->id);
-        echo json_encode([
+
+        // Get product ID
+        $product_id = (int) ($customization > 0 ? ($product['id_product'] ?? $product['id']) : $product['id']);
+        
+        // Get price with tax included
+        $price_tax_incl = (double) Product::getPriceStatic($product_id, true, null, 6);
+        
+        // Get manufacturer name with fallback
+        $manufacturer_name = '';
+        if (!empty($product['manufacturer_name'])) {
+            $manufacturer_name = $product['manufacturer_name'];
+        } else {
+            $prod_obj = new Product($product_id, false, $this->context->language->id);
+            if ($prod_obj->id_manufacturer > 0) {
+                $manufacturer = new Manufacturer($prod_obj->id_manufacturer);
+                $manufacturer_name = $manufacturer->name ?? '';
+            }
+        }
+
+        $item_data = [
             'item_name' => Tools::replaceAccentedChars($product['name']),
-            'item_id' => $customization > 0 ? $product['id_product'] ?? $product['id'] : $product['id'],
-            'price' => ((double) $product['price']),
-            'item_brand' => $product['manufacturer_name'] ?? null,
+            'item_id' => (string) $product_id,
+            'price' => $price_tax_incl,
             'item_category' => $category->name,
-            'item_variant' => $product['attributes_small'] ?? null,
-            'quantity' => $customization > 0 ? ($product['quantity'] ?? $product['minimal_quantity']) : $product['minimal_quantity']
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            'quantity' => (int) ($customization > 0 ? ($product['quantity'] ?? $product['minimal_quantity']) : $product['minimal_quantity'])
+        ];
+
+        // Add item_brand only if not empty
+        if (!empty($manufacturer_name)) {
+            $item_data['item_brand'] = $manufacturer_name;
+        }
+
+        // Add item_variant only if not empty
+        if (!empty($product['attributes_small'])) {
+            $item_data['item_variant'] = $product['attributes_small'];
+        }
+
+        echo json_encode($item_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
     }
 
