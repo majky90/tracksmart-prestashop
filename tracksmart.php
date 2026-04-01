@@ -42,7 +42,7 @@ class TrackSmart extends Module
         $this->name = 'tracksmart';
         $this->tab = 'analytics_stats';
         $this->module_key = 'dc5b9ea5c7aeb8266461cf40270cc604';
-        $this->version = '1.1';
+        $this->version = '1.1.1';
         $this->author = 'Kacper Duras';
         $this->need_instance = 1;
 
