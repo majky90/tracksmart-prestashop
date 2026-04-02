@@ -56,18 +56,27 @@ class TrackSmart extends Module
         $this->ps_versions_compliancy = array('min' => '1.7', 'max' => '9.9');
     }
 
-    // PrestaShop 9.x uses displayHeader instead of header
+    // Some page-builder themes call displayHeader multiple times per request.
+    // Inject once and return an empty string for every subsequent call.
     public function hookDisplayHeader($params = [])
     {
-        static $alreadyRendered = false;
+        static $ts_injected = false;
 
-        if ($alreadyRendered) {
+        if ($ts_injected)
+        {
             return '';
         }
 
-        $alreadyRendered = true;
+        $ts_injected = true;
 
-        return $this->hookHeader();
+        $sdkPath = $this->_path . 'views/js/sdk.js?v=1.0.1';
+        $frontPath = $this->_path . 'views/js/front.js';
+
+        $scripts = '';
+        $scripts .= '<script src="' . htmlspecialchars($sdkPath, ENT_QUOTES, 'UTF-8') . '" defer></script>';
+        $scripts .= '<script src="' . htmlspecialchars($frontPath, ENT_QUOTES, 'UTF-8') . '" defer></script>';
+
+        return $scripts . (string) $this->hookHeader($params);
     }
 
     public function install()
@@ -82,7 +91,6 @@ class TrackSmart extends Module
         }
 
         return parent::install() &&
-            $this->registerHook('actionFrontControllerSetMedia') &&
             $this->registerHook('displayHeader');
     }
 
@@ -145,6 +153,25 @@ class TrackSmart extends Module
             array_push($input, $value);
         }
 
+        // Provide an admin helper box with quick GTM container import instructions.
+        $containerDownloadUrl = $this->_path . 'container.json';
+        $input[] = array(
+            'type' => 'free',
+            'name' => 'TRACKSMART_GTM_IMPORT_INFO',
+            'label' => 'Quick Tracking Setup (GTM Import)',
+            'html_content' =>
+                '<div class="alert alert-info">'
+                . '<p><strong>Quick Tracking Setup (GTM Import)</strong></p>'
+                . '<p>This configuration file includes a prebuilt integration for Google Analytics 4 (GA4) and Facebook Pixel. After import, events such as product view, add to cart, and purchase will be configured automatically.</p>'
+                . '<ul>'
+                . '<li>Download the file using the button below.</li>'
+                . '<li>In Google Tag Manager, go to Admin -&gt; Import Container.</li>'
+                . '<li>Select the downloaded file and choose the Merge option.</li>'
+                . '</ul>'
+                . '<p><a class="btn btn-primary" href="' . htmlspecialchars($containerDownloadUrl, ENT_QUOTES, 'UTF-8') . '" download><i class="icon-download"></i> Download container.json</a></p>'
+                . '</div>',
+        );
+
         $helper->tpl_vars = array(
             'fields_value' => $vars,
             'languages' => $this->context->controller->getLanguages(),
@@ -170,24 +197,11 @@ class TrackSmart extends Module
             ));
     }
 
-    public function hookActionFrontControllerSetMedia()
+    public function hookHeader($params = [])
     {
         if (!Configuration::get('TRACKSMART_STATE'))
         {
-            return;
-        }
-
-        $this->context->controller->registerJavascript('tracksmart_sdk',
-            'modules/' . $this->name . '/views/js/sdk.js', array('position' => 'head', 'priority' => 100));
-        $this->context->controller->registerJavascript('tracksmart_front',
-            'modules/' . $this->name . '/views/js/front.js', array('position' => 'bottom', 'priority' => 100));
-    }
-
-    public function hookHeader()
-    {
-        if (!Configuration::get('TRACKSMART_STATE'))
-        {
-            return;
+            return '';
         }
 
         $controller = $this->context->controller->php_self;
