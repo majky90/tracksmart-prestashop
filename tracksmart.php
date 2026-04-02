@@ -59,7 +59,15 @@ class TrackSmart extends Module
     // PrestaShop 9.x uses displayHeader instead of header
     public function hookDisplayHeader($params = [])
     {
-        return $this->hookHeader($params);
+        static $alreadyRendered = false;
+
+        if ($alreadyRendered) {
+            return '';
+        }
+
+        $alreadyRendered = true;
+
+        return $this->hookHeader();
     }
 
     public function install()
